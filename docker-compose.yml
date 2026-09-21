@@ -1,0 +1,367 @@
+services:
+  aiagent-end:
+    build: .
+    image: aiagent-end:latest
+    container_name: aiagent-end
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      - DB_HOST=mysql
+      - MILVUS_HOST=milvus
+    volumes:
+      - ./fileworkspace:/app/fileworkspace
+    depends_on:
+      mysql:
+        condition: service_healthy
+      milvus:
+        condition: service_started
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    container_name: aiagent-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=lyp82nlfxxlE
+      - MYSQL_DATABASE=fastapi_first
+      - TZ=Asia/Shanghai
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-plyp82nlfxxlE"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  # ============================================================================
+  # PostgreSQL 关系数据库
+  # 宿主机连接: localhost:5433  账号 postgres / lyp82nlfxxlE  数据库 aiagent
+  # 容器内连接(服务间): host=postgres port=5432
+  # ============================================================================
+  postgres:
+    # pgvector 官方镜像:内置 vector 扩展,CREATE EXTENSION vector 即可使用
+    image: pgvector/pgvector:pg17
+    container_name: aiagent-postgres
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=lyp82nlfxxlE
+      - POSTGRES_DB=aiagent
+      - TZ=Asia/Shanghai
+    ports:
+      - "5433:5432"   # 宿主机 5433,避免和本机已装的 PostgreSQL(5432) 冲突
+    volumes:
+      - postgres_data:/var/lib/postgresql/data   # 数据持久化
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d aiagent"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  # ============================================================================
+  # pgAdmin 4 - PostgreSQL 可视化界面
+  # 访问: http://localhost:5050  登录账号 admin@aiagent.com / lyp82nlfxxlE
+  # 界面内添加服务器: host 填 postgres(compose 服务名) port 5432
+  # ============================================================================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: aiagent-pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@aiagent.com
+      - PGADMIN_DEFAULT_PASSWORD=lyp82nlfxxlE
+    ports:
+      - "5050:80"   # 宿主机 5050,避免和常用 80/8080 冲突
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin   # 保存 pgAdmin 配置和已添加的服务器连接
+    depends_on:
+      postgres:
+        condition: service_healthy   # 等 postgres 就绪后再启动
+    restart: unless-stopped
+
+  # ============================================================================
+  # Redis 内存数据库
+  # 宿主机连接: localhost:6380  密码 lyp82nlfxxlE
+  # 容器内连接(服务间): host=redis port=6379
+  # ============================================================================
+  redis:
+    # Redis 8 起 JSON 类型已内置(无需 RedisJSON 模块),7 不支持 JSON.SET
+    image: redis:8
+    container_name: aiagent-redis
+    command: ["redis-server", "--requirepass", "lyp82nlfxxlE", "--appendonly", "yes"]   # 开 AOF 持久化,重启不丢数据
+    ports:
+      - "6380:6379"   # 宿主机 6380,避免和本机已装的 Redis(6379) 冲突
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a lyp82nlfxxlE ping | grep PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  # ============================================================================
+  # RedisInsight - Redis 官方可视化界面
+  # 访问: http://localhost:5540
+  # 界面内添加数据库: host 填 redis(compose 服务名) port 6379 密码
+
+  # ============================================================================
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: aiagent-redisinsight
+    ports:
+      - "5540:5540"   # RedisInsight v2 内置服务端口
+    volumes:
+      - redisinsight_data:/data   # 保存已添加的数据库连接配置
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: aiagent-etcd
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - etcd_data:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    restart: unless-stopped
+
+  # ============================================================================
+  # MinIO 对象存储(S3 兼容)- 同时给 Milvus 存向量数据用
+  # Web 控制台: http://localhost:9001  账号 minioadmin / minioadmin
+  # S3 API:     http://localhost:9000
+  # ============================================================================
+  minio:
+    # 用社区版(AGPL 免费)。注意:quay.io/minio/aistor/* 是商业版,需要付费 license
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: aiagent-minio
+    environment:
+      # MINIO_ACCESS_KEY / MINIO_SECRET_KEY 已废弃,新版用 ROOT 变量
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    ports:
+      - "9000:9000"   # S3 API(容器内 Milvus 走 9000,宿主机暴露供本地调试)
+      - "9001:9001"   # Web 控制台
+    volumes:
+      - minio_data:/minio_data   # 数据持久化(保留原挂载点,Milvus 的 bucket 都存在这里)
+    command: server /minio_data --console-address ":9001"   # 固定控制台端口,默认是随机端口
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  # ============================================================================
+  # RustFS 对象存储(Rust 实现,S3 兼容,Apache 2.0)
+  # S3 API: http://localhost:9010   控制台: http://localhost:9011/rustfs/console
+  # 账号 rustfsadmin / rustfsadmin
+  # 宿主端口用 9010/9011,避开 MinIO 占用的 9000/9001
+  # ============================================================================
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: aiagent-rustfs
+    environment:
+      - RUSTFS_ACCESS_KEY=rustfsadmin
+      - RUSTFS_SECRET_KEY=rustfsadmin
+    ports:
+      - "9010:9000"   # S3 API
+      - "9011:9001"   # Web 控制台(UI 路径 /rustfs/console)
+    volumes:
+      - rustfs_data:/data   # 数据持久化
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  # ============================================================================
+  # MongoDB 文档数据库
+  # 宿主机连接: localhost:27018  账号 root / lyp82nlfxxlE
+  # 容器内连接(服务间): host=mongodb port=27017
+  # ============================================================================
+  mongodb:
+    image: mongo:8.0
+    container_name: aiagent-mongodb
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=lyp82nlfxxlE
+      - TZ=Asia/Shanghai
+    ports:
+      - "27018:27017"   # 宿主机 27018,避免和本机已装的 MongoDB(27017) 冲突
+    volumes:
+      - mongodb_data:/data/db   # 数据持久化
+    healthcheck:
+      test: ["CMD", "mongosh", "-u", "root", "-p", "lyp82nlfxxlE", "--authenticationDatabase", "admin", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  # ============================================================================
+  # Mongo Express - MongoDB 可视化界面
+  # 访问: http://localhost:8081  账号 admin / lyp82nlfxxlE
+  # ============================================================================
+  mongo-express:
+    image: mongo-express:latest
+    container_name: aiagent-mongo-express
+    environment:
+      # 连接 MongoDB:用 compose 服务名,admin 库认证
+      - ME_CONFIG_MONGODB_URL=mongodb://root:lyp82nlfxxlE@mongodb:27017/?authSource=admin
+      # mongo-express 自身的登录账号
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=lyp82nlfxxlE
+    ports:
+      - "8081:8081"   # Web 界面端口
+    depends_on:
+      mongodb:
+        condition: service_healthy   # 等 MongoDB 就绪后再启动
+    restart: unless-stopped
+
+  milvus:
+    image: milvusdb/milvus:v2.4.0
+    container_name: aiagent-milvus
+    command: ["milvus", "run", "standalone"]
+    environment:
+      - ETCD_ENDPOINTS=etcd:2379
+      - MINIO_ADDRESS=minio:9000
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      - etcd
+      - minio
+    volumes:
+      - milvus_data:/var/lib/milvus
+    restart: unless-stopped
+
+  # ============================================================================
+  # Elasticsearch 单节点部署(开发环境)
+  # 验证: curl http://localhost:9200  返回 cluster_name / version 即正常
+  # ============================================================================
+  elasticsearch:
+    # 用 ./elasticsearch/Dockerfile 构建,内置 IK 分词器
+    build: ./elasticsearch
+    container_name: aiagent-elasticsearch
+    environment:
+      # 单节点模式:跳过 master 选举,开发/测试用;生产要去掉配多节点集群
+      - discovery.type=single-node
+      # 关闭 xpack 安全认证:免密访问(开发方便);生产必须 true + ELASTIC_PASSWORD
+      - # 开启xpack安全认证
+      - xpack.security.enabled=true
+      - # 设置 elastic 超级管理员密码，自行修改
+      - ELASTIC_PASSWORD=AiAgent@123456
+      # 关闭地理 IP 数据库自动下载(离线环境会报错)
+      - ingest.geoip.downloader.enabled=false
+      # JVM 堆内存:开发 512m 够;生产建议 = 物理内存 50%,且不超 32g
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - cluster.name=aiagent-es
+      - node.name=es-node-1
+    ports:
+      - "9200:9200"   # REST API,curl/Kibana 走这里
+      - "9300:9300"   # 节点间通信(集群用),单节点用不到,保留方便扩集群
+    volumes:
+      - es_data:/usr/share/elasticsearch/data  # 数据持久化
+    restart: unless-stopped
+
+  # ============================================================================
+  # Kibana - Elasticsearch 可视化界面
+  # 访问: http://localhost:5601  首次启动要等 1-2 分钟做初始化
+  # ============================================================================
+  kibana:
+    # 版本必须和 ES 一致(都是 8.15.0),否则协议不兼容连不上
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    container_name: aiagent-kibana
+    environment:
+      # ES 连接地址:用 compose 服务名(容器内部网络,不用 localhost)
+      # ES 关了 xpack.security 后,Kibana 不需要账号密码,直接连
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      # 界面语言:中文(可选,默认英文)
+      - I18N_LOCALE=zh-CN
+    ports:
+      - "5601:5601"  # Kibana Web 界面端口
+    depends_on:
+      - elasticsearch  # 等 ES 启动后再起 Kibana(只等启动,不等就绪;首次连不上 Kibana 会自动重试)
+    restart: unless-stopped
+
+  # ============================================================================
+  # Neo4j 图数据库(社区版) - 知识图谱存储
+  # 浏览器界面: http://localhost:7474  账号 neo4j / neo4j123456
+  # ============================================================================
+  neo4j:
+    image: neo4j:5.26.0
+    container_name: aiagent-neo4j
+    environment:
+      # 默认账号 neo4j,密码在首次启动时初始化;之后改这里不生效,需删除 volume 重置
+      - NEO4J_AUTH=neo4j/neo4j123456
+      # JVM 堆内存:开发 512m 够;生产建议 = 物理内存 50%
+      - NEO4J_server_memory_heap_initial__size=512m
+      - NEO4J_server_memory_heap_max__size=512m
+    ports:
+      - "7474:7474"   # HTTP 接口 + Neo4j Browser 可视化界面
+      - "7687:7687"   # Bolt 协议,后端 neo4j Python driver 走这里
+    volumes:
+      - neo4j_data:/data   # 图数据持久化
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p neo4j123456 'RETURN 1' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # ============================================================================
+  # RabbitMQ 消息队列(带管理界面)
+  # 宿主机连接: localhost:5672(AMQP)  账号 user / lyp82nlfxxlE
+  # 管理界面: http://localhost:15672
+  # 容器内连接(服务间): host=rabbitmq port=5672
+  # ============================================================================
+  rabbitmq:
+    image: rabbitmq:4-management   # management 标签自带 Web 管理界面(15672)
+    container_name: aiagent-rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=user
+      - RABBITMQ_DEFAULT_PASS=lyp82nlfxxlE
+      - RABBITMQ_DEFAULT_VHOST=aiagent   # 默认虚拟主机,隔离不同业务
+      - TZ=Asia/Shanghai
+    ports:
+      - "5672:5672"    # AMQP 协议,后端 pika/aio-pika 走这里
+      - "15672:15672"  # Web 管理界面
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq   # 队列、消息数据持久化
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  postgres_data:
+  pgadmin_data:
+  redis_data:
+  redisinsight_data:
+  etcd_data:
+  minio_data:
+  rustfs_data:
+  mongodb_data:
+  milvus_data:
+  es_data:
+  neo4j_data:
+  rabbitmq_data:

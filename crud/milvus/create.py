@@ -1,0 +1,47 @@
+
+from pymilvus import CollectionSchema, FieldSchema, DataType,AsyncMilvusClient
+from .search import search_milvus_data
+from .config import milvus_client,settings
+from fastapi import APIRouter
+milvus_router = APIRouter(prefix='/Milvus',tags=['向量数据库'])
+
+
+@milvus_router.get('/create_table',description='创建milvus向量数据库')
+async def create_milvus_database():
+    try:
+        # 旧集合 schema 不兼容，先删除重建
+        if milvus_client.has_collection(collection_name=settings.COLLECTION_NAME):
+            milvus_client.drop_collection(collection_name=settings.COLLECTION_NAME)
+
+        if not await milvus_client.has_collection(collection_name=settings.COLLECTION_NAME):
+            schema = CollectionSchema(fields=[
+                FieldSchema(name='id', dtype=DataType.INT64, is_primary=True, auto_id=True),
+                FieldSchema(name='vector', dtype=DataType.FLOAT_VECTOR, dim=settings.DIMENSIONS),
+                FieldSchema(name='title', dtype=DataType.VARCHAR, max_length=1000, nullable=True),
+                FieldSchema(name='content_id',dtype=DataType.VARCHAR, max_length=1000, nullable=True),
+                FieldSchema(name='content', dtype=DataType.VARCHAR, max_length=20000)
+            ])
+            index_params = milvus_client.prepare_index_params()
+            index_params.add_index(field_name='vector', index_type='IVF_FLAT', metric_type='COSINE', params={'nlist': 1024})
+            await milvus_client.create_collection(
+                collection_name=settings.COLLECTION_NAME,
+                schema=schema,
+                index_params=index_params
+            )
+            await milvus_client.flush(collection_name=settings.COLLECTION_NAME)
+            return {
+                'msg':'创建milvus向量数据库成功'
+            }
+    except Exception as e:
+        return {
+            'msg':f'创建失败：{e}'
+        }
+
+
+@milvus_router.post('/search')
+async def search_milvus(query:str):
+    res = await search_milvus_data(query)
+    return res
+
+
+
