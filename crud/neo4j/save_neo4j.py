@@ -1,28 +1,14 @@
 from fastapi import HTTPException
 from neo4j import AsyncDriver
-from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import SessionLocal
 from models import GraphDocModel
+from schemas.graph import GraphDocCreate, GraphDocOut
 from .entityAndrelationship import get_entity_relationship
 
-
-
-# -------------------------- Pydantic Schema --------------------------
-class GraphDocCreate(BaseModel):
-    doc_id: int
-    entities: list[dict]
-    relationships: list[dict]
-    query_cypher: str
-    cypher: str
-
-
-class GraphDocOut(GraphDocCreate):
-    id: int
-    model_config = ConfigDict(from_attributes=True)
 
 
 # -------------------------- 建表 --------------------------

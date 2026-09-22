@@ -1,69 +1,20 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel, ConfigDict
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import datetime
-
 from core.database import get_db, create_pg_tables
 from models import UserModel, RoleModel, UserRoleModel
+from schemas.user import (
+    AddRoleDTO, BindRoleDTO, LoginDTO, RefreshTokenDTO, RegisterDTO,
+    RoleRespDTO, UpdateUserDTO, UserRespDTO,
+)
 from utils.auth import create_access_token, create_refresh_token, decode_token
 from utils.pwd import get_password_hash, verify_password
 
 user_router = APIRouter(prefix='/user', tags=['用户'])
 role_router = APIRouter(prefix='/role', tags=['角色'])
-
-
-# -------------------------- DTO --------------------------
-class RegisterDTO(BaseModel):
-    username: str
-    password: str
-    email: str
-
-
-class LoginDTO(BaseModel):
-    username: str
-    password: str
-
-
-class RefreshTokenDTO(BaseModel):
-    refresh_token: str
-
-
-class UpdateUserDTO(BaseModel):
-    username: Optional[str] = None
-    password: Optional[str] = None
-    email: Optional[str] = None
-
-
-class AddRoleDTO(BaseModel):
-    role_name: str
-    role_code: str
-    description: str
-
-
-class BindRoleDTO(BaseModel):
-    user_id: int
-    role_id: int
-
-
-class UserRespDTO(BaseModel):
-    id: int
-    username: str
-    email: str
-    create_at: datetime.datetime
-    update_at: datetime.datetime
-    model_config = ConfigDict(from_attributes=True)
-
-
-class RoleRespDTO(BaseModel):
-    id: int
-    role_name: str
-    role_code: str
-    description: str
-    model_config = ConfigDict(from_attributes=True)
 
 
 # -------------------------- 鉴权 --------------------------

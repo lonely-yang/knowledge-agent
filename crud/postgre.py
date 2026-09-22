@@ -1,37 +1,15 @@
 from datetime import datetime
-from typing import Optional
 from fastapi import Depends
-from pydantic import BaseModel,ConfigDict,Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from models import KhDocument
 from fastapi import APIRouter
 from sqlalchemy import select
 
 from core.database import SessionLocal, get_db, create_pg_tables, drop_pg_tables
-from models.document_content import DocContent
+from schemas.content import DocContent
+from schemas.document import KhDocumentRespDTO, KhDocumentRespDTOUpdate
 
 pg_router = APIRouter(prefix='/pg',tags=['PG数据库'])
-class KhDocumentRespDTO(BaseModel):
-    id:int
-    title:Optional[str] = None
-    content_id:int = None
-    summary:Optional[str] = None
-    doc_type:Optional[str] = None
-    status:int = None
-    publish_time: datetime | None = datetime.now()
-    create_at: datetime | None = datetime.now()
-    content: Optional[str] = Field(default=None, exclude=True, description='正文，仅用于同步MongoDB，不落PG表')
-    model_config = ConfigDict(from_attributes=True)
-
-class KhDocumentRespDTOUpdate(BaseModel):
-    title:Optional[str] = None
-    content_id:Optional[int] = None
-    summary:Optional[str] = None
-    doc_type:Optional[str] = None
-    publish_time: datetime | None= datetime.now()
-    create_at: datetime | None= datetime.now()
-    content: Optional[str] = Field(default=None, exclude=True, description='正文，仅用于同步MongoDB，不落PG表')
-    model_config = ConfigDict(from_attributes=True)
 
 # 生成表
 @pg_router.post('/create_table',description='权限操作，切勿使用')

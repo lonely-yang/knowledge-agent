@@ -1,11 +1,10 @@
 """
 大模型通过读取上传文件内容，抽离出实体和关系，提供给neo4j创建关系
 """
-from typing import List
-from pydantic import BaseModel, Field
 from fastapi import HTTPException
 from models import KHDocument
 from .config import settings
+from schemas.graph import Neo4jSchema
 from langchain_openai import ChatOpenAI
 model = ChatOpenAI(
     model=settings.QWEN_MODEL_NAME,
@@ -13,12 +12,6 @@ model = ChatOpenAI(
     base_url=settings.QWEN_BASE_URL,
     temperature=0
 )
-
-class Neo4jSchema(BaseModel):
-    entities:List[dict] = Field(description='单个实体结构,描述实体节点的信息')
-    relationships:List[dict] = Field(description='描述实体节点之间的单个关系结构')
-    cypher:str = Field(description='Cypher语句,提供给neo4j生成可视化图谱')
-    query_cypher:str = Field(description='Cypher语句,neo4j查询语句')
 def neo4j_prompt(content):
     return f"""
                 # 知识图谱抽取任务（Neo4j专用）

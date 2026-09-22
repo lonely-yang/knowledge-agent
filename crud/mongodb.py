@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException,Depends
 from pydantic import ValidationError
 from core.config import settings
 from models import KHDocument
-from models.document_content import DocContent
+from schemas.content import DocContent
 from beanie import init_beanie
 from beanie.operators import Set
 from pymongo import AsyncMongoClient

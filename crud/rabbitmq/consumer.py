@@ -3,7 +3,8 @@ import asyncio
 from aio_pika.abc import AbstractIncomingMessage
 from .config import settings
 from crud.rabbitmq.connection import rmq_manager
-from crud.es.create import add_data,KnowledgeDoc
+from crud.es.create import add_data
+from schemas.search import KnowledgeDoc
 from crud.mongodb import get_mongo_doc_api
 from crud.neo4j.create import insert_neo4j_table
 from utils.split_file import split_doc
