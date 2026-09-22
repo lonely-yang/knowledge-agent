@@ -2,24 +2,12 @@ import httpx
 from fastapi import APIRouter
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from core.config import settings
 from crud.milvus.search import search_milvus_data
 from crud.es.create import search_data, get_es
 
 ai_router = APIRouter(prefix='/ai', tags=['LLM'])
-
-
-# ========== 配置类 ==========
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
-    RERANK_MODEL_NAME: str
-    RERANK_URL: str
-    QWEN_API_KEY: str
-    QWEN_MODEL_NAME:str
-    QWEN_BASE_URL:str
-
-settings = Settings()
 
 model = ChatOpenAI(
     model=settings.QWEN_MODEL_NAME,

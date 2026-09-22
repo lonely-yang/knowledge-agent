@@ -1,17 +1,8 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
 import aioboto3
 from botocore.client import Config
 from botocore.exceptions import ClientError
-# ========== 配置类 ==========
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
-    RUSTFS_ENDPOINT: str
-    RUSTFS_ACCESS_KEY: str
-    RUSTFS_SECRET_KEY: str
-    RUSTFS_BUCKET: str
-    PRESIGNED_EXPIRE: int = 3600  # 预签名链接有效期，单位秒
 
-settings = Settings()
+from core.config import settings
 
 # ========== 异步S3客户端依赖 ==========
 async def get_s3_client():

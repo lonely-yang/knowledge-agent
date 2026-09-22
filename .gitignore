@@ -139,3 +139,9 @@ dist-ssr
 
 # Docker volumes
 volumes/
+
+# 重构验证产物与配置备份
+.env.bak
+before_openapi.json
+after_openapi.json
+

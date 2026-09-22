@@ -1,14 +1,8 @@
 from datetime import datetime
 from pydantic import Field, BaseModel
-from pydantic_settings import BaseSettings,SettingsConfigDict
 from beanie import Document
-# 配置
-class Setting(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
-    MONGO_URI:str
-    DB_NAME:str
 
-settings = Setting()
+from core.config import settings
 
 # Beanie Document 模型（映射Mongo集合）
 class KHDocument(Document):

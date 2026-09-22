@@ -3,14 +3,8 @@ from fastapi import APIRouter, HTTPException,Depends
 from pydantic import BaseModel,Field
 from typing import Optional, List
 from datetime import datetime
-from pydantic_settings import BaseSettings, SettingsConfigDict
-# ========== 配置类 ==========
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
-    INDEX_NAME: str = 'knowledge-es'
-    HOST:str = 'http://localhost:9200'
-    BASIC_AUTH:str
-settings = Settings()
+
+from core.config import settings
 
 es_router = APIRouter(prefix='/es',tags=['ES 全文检索'])
 
@@ -51,8 +45,8 @@ es = None
 async def init_es():
     global es
     es = AsyncElasticsearch(
-        settings.HOST,
-        basic_auth=("elastic", settings.BASIC_AUTH)
+        settings.ES_HOST,
+        basic_auth=("elastic", settings.ES_BASIC_AUTH)
     )
     # 测试连通性
     if not await es.ping():
