@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import Depends
 from pydantic import BaseModel,ConfigDict,Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from models.kh_document import KhDocument
+from models import KhDocument
 from fastapi import APIRouter
 from sqlalchemy import select
 

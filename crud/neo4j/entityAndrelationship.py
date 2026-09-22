@@ -4,7 +4,7 @@
 from typing import List
 from pydantic import BaseModel, Field
 from fastapi import HTTPException
-from models.document_content import KHDocument
+from models import KHDocument
 from .config import settings
 from langchain_openai import ChatOpenAI
 model = ChatOpenAI(

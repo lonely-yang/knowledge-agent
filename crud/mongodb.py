@@ -2,7 +2,9 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException,Depends
 from pydantic import ValidationError
-from models.document_content import KHDocument, DocContent,settings
+from core.config import settings
+from models import KHDocument
+from models.document_content import DocContent
 from beanie import init_beanie
 from beanie.operators import Set
 from pymongo import AsyncMongoClient

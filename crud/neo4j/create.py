@@ -3,8 +3,9 @@ from neo4j import AsyncDriver, AsyncGraphDatabase
 
 from .config import settings
 from .entityAndrelationship import get_entity_relationship
-from .save_neo4j import GraphDocOut, GraphDocModel, create_graph_doc, graph_doc_exists
+from .save_neo4j import GraphDocOut, create_graph_doc, graph_doc_exists
 from core.database import create_pg_tables
+from models import GraphDocModel
 
 neo4j_router = APIRouter(prefix='/neo4j', tags=['Neo4j'])
 

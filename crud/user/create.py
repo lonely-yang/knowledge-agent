@@ -2,49 +2,18 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import Column, DateTime, Integer, String, delete, select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import datetime
 
-from core.database import Base, get_db, create_pg_tables
+from core.database import get_db, create_pg_tables
+from models import UserModel, RoleModel, UserRoleModel
 from utils.auth import create_access_token, create_refresh_token, decode_token
 from utils.pwd import get_password_hash, verify_password
 
 user_router = APIRouter(prefix='/user', tags=['用户'])
 role_router = APIRouter(prefix='/role', tags=['角色'])
-
-
-# -------------------------- 用户表 --------------------------
-class KHUSERModel(Base):
-    __tablename__ = "kh_user"
-
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    username = Column(String(50), nullable=False, unique=True)
-    password = Column(String(60), nullable=False, comment="bcrypt密码哈希 cost=12")
-    email = Column(String(255), nullable=False, unique=True)
-    create_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
-    update_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
-
-
-# -------------------------- 角色表 --------------------------
-class KHROLEModel(Base):
-    __tablename__ = "kh_role"
-
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    role_name = Column(String(50), nullable=False)
-    role_code = Column(String(50), nullable=False, unique=True)
-    description = Column(String(255), nullable=False)
-
-
-# -------------------------- 用户角色关联表 --------------------------
-class KHUSERROLEModel(Base):
-    __tablename__ = "kh_user_role"
-
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    user_id = Column(String(50), nullable=False)
-    role_id = Column(String(50), nullable=False)
-    create_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
 
 
 # -------------------------- DTO --------------------------
@@ -98,13 +67,13 @@ class RoleRespDTO(BaseModel):
 
 
 # -------------------------- 鉴权 --------------------------
-async def get_current_user(authorization: Optional[str] = Header(None), db: AsyncSession = Depends(get_db)) -> KHUSERModel:
+async def get_current_user(authorization: Optional[str] = Header(None), db: AsyncSession = Depends(get_db)) -> UserModel:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="缺少token")
     payload = decode_token(authorization[7:], "access")
     if not payload:
         raise HTTPException(status_code=401, detail="token无效或已过期")
-    user = await db.get(KHUSERModel, int(payload["sub"]))
+    user = await db.get(UserModel, int(payload["sub"]))
     if not user:
         raise HTTPException(status_code=401, detail="用户不存在")
     return user
@@ -114,13 +83,13 @@ async def get_current_user(authorization: Optional[str] = Header(None), db: Asyn
 @user_router.get('/create_table')
 async def create_user_tables():
     return await create_pg_tables(
-        tables=[KHUSERModel.__table__, KHROLEModel.__table__, KHUSERROLEModel.__table__]
+        tables=[UserModel.__table__, RoleModel.__table__, UserRoleModel.__table__]
     )
 
 
 # -------------------------- 用户接口 --------------------------
 async def get_user_by_username(db: AsyncSession, username: str):
-    stmt = select(KHUSERModel).where(KHUSERModel.username == username)
+    stmt = select(UserModel).where(UserModel.username == username)
     res = await db.execute(stmt)
     return res.scalar_one_or_none()
 
@@ -136,10 +105,10 @@ async def register_api(dto: RegisterDTO, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail="密码长度至少6位")
     if await get_user_by_username(db, username):
         raise HTTPException(status_code=400, detail="用户名已存在")
-    stmt = select(KHUSERModel).where(KHUSERModel.email == email)
+    stmt = select(UserModel).where(UserModel.email == email)
     if (await db.execute(stmt)).scalar_one_or_none():
         raise HTTPException(status_code=400, detail="邮箱已存在")
-    user = KHUSERModel(username=username, password=get_password_hash(dto.password), email=email)
+    user = UserModel(username=username, password=get_password_hash(dto.password), email=email)
     db.add(user)
     await db.commit()
     await db.refresh(user)
@@ -169,7 +138,7 @@ async def refresh_token_api(dto: RefreshTokenDTO, db: AsyncSession = Depends(get
     payload = decode_token(dto.refresh_token, "refresh")
     if not payload:
         raise HTTPException(status_code=401, detail="refresh token无效或已过期")
-    user = await db.get(KHUSERModel, int(payload["sub"]))
+    user = await db.get(UserModel, int(payload["sub"]))
     if not user:
         raise HTTPException(status_code=401, detail="用户不存在")
     token = create_access_token(user.id, user.username)
@@ -177,21 +146,21 @@ async def refresh_token_api(dto: RefreshTokenDTO, db: AsyncSession = Depends(get
 
 
 @user_router.delete('/del_user')
-async def del_user_api(user_id: int, db: AsyncSession = Depends(get_db), current_user: KHUSERModel = Depends(get_current_user)):
+async def del_user_api(user_id: int, db: AsyncSession = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
     """删除用户，同时清理其角色关联"""
-    user = await db.get(KHUSERModel, user_id)
+    user = await db.get(UserModel, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
-    await db.execute(delete(KHUSERROLEModel).where(KHUSERROLEModel.user_id == str(user_id)))
+    await db.execute(delete(UserRoleModel).where(UserRoleModel.user_id == str(user_id)))
     await db.delete(user)
     await db.commit()
     return {"msg": "删除成功"}
 
 
 @user_router.put('/update_user', response_model=UserRespDTO)
-async def update_user_api(user_id: int, dto: UpdateUserDTO, db: AsyncSession = Depends(get_db), current_user: KHUSERModel = Depends(get_current_user)):
+async def update_user_api(user_id: int, dto: UpdateUserDTO, db: AsyncSession = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
     """修改用户，只更新传入的字段"""
-    user = await db.get(KHUSERModel, user_id)
+    user = await db.get(UserModel, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
     update_data = {k: v for k, v in dto.model_dump(exclude_unset=True).items() if v is not None}
@@ -201,7 +170,7 @@ async def update_user_api(user_id: int, dto: UpdateUserDTO, db: AsyncSession = D
         if await get_user_by_username(db, update_data["username"]):
             raise HTTPException(status_code=400, detail="用户名已存在")
     if "email" in update_data and update_data["email"] != user.email:
-        stmt = select(KHUSERModel).where(KHUSERModel.email == update_data["email"])
+        stmt = select(UserModel).where(UserModel.email == update_data["email"])
         if (await db.execute(stmt)).scalar_one_or_none():
             raise HTTPException(status_code=400, detail="邮箱已存在")
     if "password" in update_data:
@@ -217,12 +186,12 @@ async def update_user_api(user_id: int, dto: UpdateUserDTO, db: AsyncSession = D
 
 # -------------------------- 角色接口 --------------------------
 @role_router.post('/add_role', response_model=RoleRespDTO)
-async def add_role_api(dto: AddRoleDTO, db: AsyncSession = Depends(get_db), current_user: KHUSERModel = Depends(get_current_user)):
+async def add_role_api(dto: AddRoleDTO, db: AsyncSession = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
     """新增角色"""
-    stmt = select(KHROLEModel).where(KHROLEModel.role_code == dto.role_code)
+    stmt = select(RoleModel).where(RoleModel.role_code == dto.role_code)
     if (await db.execute(stmt)).scalar_one_or_none():
         raise HTTPException(status_code=400, detail="角色编码已存在")
-    role = KHROLEModel(**dto.model_dump())
+    role = RoleModel(**dto.model_dump())
     db.add(role)
     await db.commit()
     await db.refresh(role)
@@ -230,40 +199,40 @@ async def add_role_api(dto: AddRoleDTO, db: AsyncSession = Depends(get_db), curr
 
 
 @role_router.delete('/del_role')
-async def del_role_api(role_id: int, db: AsyncSession = Depends(get_db), current_user: KHUSERModel = Depends(get_current_user)):
+async def del_role_api(role_id: int, db: AsyncSession = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
     """删除角色，同时清理其用户关联"""
-    role = await db.get(KHROLEModel, role_id)
+    role = await db.get(RoleModel, role_id)
     if not role:
         raise HTTPException(status_code=404, detail="角色不存在")
-    await db.execute(delete(KHUSERROLEModel).where(KHUSERROLEModel.role_id == str(role_id)))
+    await db.execute(delete(UserRoleModel).where(UserRoleModel.role_id == str(role_id)))
     await db.delete(role)
     await db.commit()
     return {"msg": "删除成功"}
 
 
 @role_router.post('/bind_role')
-async def bind_role_api(dto: BindRoleDTO, db: AsyncSession = Depends(get_db), current_user: KHUSERModel = Depends(get_current_user)):
+async def bind_role_api(dto: BindRoleDTO, db: AsyncSession = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
     """给用户绑定角色"""
-    if not await db.get(KHUSERModel, dto.user_id):
+    if not await db.get(UserModel, dto.user_id):
         raise HTTPException(status_code=404, detail="用户不存在")
-    if not await db.get(KHROLEModel, dto.role_id):
+    if not await db.get(RoleModel, dto.role_id):
         raise HTTPException(status_code=404, detail="角色不存在")
-    stmt = select(KHUSERROLEModel).where(
-        KHUSERROLEModel.user_id == str(dto.user_id), KHUSERROLEModel.role_id == str(dto.role_id)
+    stmt = select(UserRoleModel).where(
+        UserRoleModel.user_id == str(dto.user_id), UserRoleModel.role_id == str(dto.role_id)
     )
     if (await db.execute(stmt)).scalar_one_or_none():
         raise HTTPException(status_code=400, detail="该用户已绑定此角色")
-    rel = KHUSERROLEModel(user_id=str(dto.user_id), role_id=str(dto.role_id))
+    rel = UserRoleModel(user_id=str(dto.user_id), role_id=str(dto.role_id))
     db.add(rel)
     await db.commit()
     return {"msg": "绑定成功"}
 
 
 @role_router.delete('/unbind_role')
-async def unbind_role_api(user_id: int, role_id: int, db: AsyncSession = Depends(get_db), current_user: KHUSERModel = Depends(get_current_user)):
+async def unbind_role_api(user_id: int, role_id: int, db: AsyncSession = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
     """给用户解绑角色"""
-    stmt = delete(KHUSERROLEModel).where(
-        KHUSERROLEModel.user_id == str(user_id), KHUSERROLEModel.role_id == str(role_id)
+    stmt = delete(UserRoleModel).where(
+        UserRoleModel.user_id == str(user_id), UserRoleModel.role_id == str(role_id)
     )
     res = await db.execute(stmt)
     await db.commit()

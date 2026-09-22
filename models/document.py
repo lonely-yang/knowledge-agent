@@ -17,4 +17,3 @@ class KhDocument(Base):
     status=Column(SmallInteger,comment='状态（0 草稿/ 1 已发布 / 2 已归档）',default=0)
     publish_time=Column(TIMESTAMP,comment='发布时间')
     create_at=Column(TIMESTAMP,comment='创建时间')
-

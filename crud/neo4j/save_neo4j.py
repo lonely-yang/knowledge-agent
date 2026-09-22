@@ -1,23 +1,13 @@
 from fastapi import HTTPException
 from neo4j import AsyncDriver
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import Column, Integer, JSON, String, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import Base, SessionLocal
+from core.database import SessionLocal
+from models import GraphDocModel
 from .entityAndrelationship import get_entity_relationship
-
-# -------------------------- SQLAlchemy ORM模型 --------------------------
-class GraphDocModel(Base):
-    __tablename__ = "graph_doc"
-
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    doc_id = Column(Integer, unique=True, index=True, nullable=False)
-    entities = Column(JSON, nullable=False)
-    query_cypher = Column(String, nullable=False)
-    relationships = Column(JSON, nullable=False)
-    cypher = Column(String, nullable=False)
 
 
 
