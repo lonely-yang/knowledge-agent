@@ -1,3 +1,27 @@
+# 项目结构（2026-09 重构后）
+
+```
+core/      config.py(统一 Settings)、database.py(统一 PG engine/Base)、security.py(鉴权依赖)
+models/    纯 ORM：user.py、document.py、graph_document.py、content.py(Beanie)
+schemas/   Pydantic DTO：user、document、content、graph、search
+api/       全部路由：user、role、document、mongo、file、publish、es、milvus、neo4j、ai
+services/  document_service、content_service、graph_service、llm_service
+clients/   rustfs、es_client、milvus_client、neo4j_client、rabbitmq/
+utils/     auth、hashing、split_file、parsers/
+main.py    路由挂载 + lifespan 初始化
+```
+
+## 路由前缀变更（前端需同步）
+
+| 旧 | 新 |
+|---|---|
+| /restFS/* | /restfs/* |
+| /Milvus/* | /milvus/* |
+
+其余路由与接口行为不变。
+
+---
+
 一、代码层面（必须先做）
      
   ┌────────────────────┬────────────────────────────────────────────────────────────────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────┐
