@@ -10,7 +10,7 @@ from datetime import datetime
 from crud.mongodb import get_mongo_doc_api
 from crud.postgre import update_kh_doc,KhDocumentRespDTOUpdate
 from fastapi import APIRouter
-from models.kh_document import SessionLocal
+from core.database import SessionLocal
 from crud.rabbitmq.producer import publish_index,publish_rag,publish_kg
 publish_router = APIRouter(prefix='/knowledge_doc',tags=['发布文档'])
 

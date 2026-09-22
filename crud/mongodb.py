@@ -6,7 +6,7 @@ from models.document_content import KHDocument, DocContent,settings
 from beanie import init_beanie
 from beanie.operators import Set
 from pymongo import AsyncMongoClient
-from models.kh_document import SessionLocal
+from core.database import SessionLocal
 
 mongo_router = APIRouter(prefix='/mongo', tags=['MongoDB'])
 

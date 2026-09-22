@@ -3,17 +3,14 @@ from typing import Optional
 from fastapi import Depends
 from pydantic import BaseModel,ConfigDict,Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from models.kh_document import SessionLocal,KhDocument,create_pg_tables,drop_pg_tables
+from models.kh_document import KhDocument
 from fastapi import APIRouter
 from sqlalchemy import select
 
-
+from core.database import SessionLocal, get_db, create_pg_tables, drop_pg_tables
 from models.document_content import DocContent
 
 pg_router = APIRouter(prefix='/pg',tags=['PG数据库'])
-async def get_db():
-    async with SessionLocal() as session:
-        yield session
 class KhDocumentRespDTO(BaseModel):
     id:int
     title:Optional[str] = None
@@ -39,11 +36,11 @@ class KhDocumentRespDTOUpdate(BaseModel):
 # 生成表
 @pg_router.post('/create_table',description='权限操作，切勿使用')
 async def create_table_api():
-    return await create_pg_tables()
+    return await create_pg_tables(tables=[KhDocument.__table__])
 # 删除表
 @pg_router.post('/drop_table',description='权限操作，切勿使用')
 async def drop_table_api():
-    return await drop_pg_tables()
+    return await drop_pg_tables(tables=[KhDocument.__table__])
 
 # 查询 doc
 async def get_doc(session:AsyncSession,id:int):

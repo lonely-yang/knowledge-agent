@@ -2,36 +2,17 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import URL, Column, DateTime, Integer, String, delete, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import Column, DateTime, Integer, String, delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 import datetime
 
-from .config import settings
+from core.database import Base, get_db, create_pg_tables
 from utils.auth import create_access_token, create_refresh_token, decode_token
 from utils.pwd import get_password_hash, verify_password
 
 user_router = APIRouter(prefix='/user', tags=['用户'])
 role_router = APIRouter(prefix='/role', tags=['角色'])
-
-# -------------------------- 配置 --------------------------
-PGSQL_URL = URL.create(
-    drivername="postgresql+psycopg",
-    username=settings.POSTGRES_USER,
-    password=settings.POSTGRES_PASSWORD,
-    host=settings.POSTGRES_HOST,
-    port=settings.POSTGRES_PORT,
-    database=settings.POSTGRES_DB,
-)
-async_engine = create_async_engine(PGSQL_URL, pool_pre_ping=True)
-AsyncSessionLocal = async_sessionmaker(async_engine, expire_on_commit=False)
-Base = declarative_base()
-
-
-async def get_db():
-    async with AsyncSessionLocal() as session:
-        yield session
 
 
 # -------------------------- 用户表 --------------------------
@@ -131,13 +112,10 @@ async def get_current_user(authorization: Optional[str] = Header(None), db: Asyn
 
 # -------------------------- 建表 --------------------------
 @user_router.get('/create_table')
-async def create_pg_tables():
-    async with async_engine.begin() as conn:
-        try:
-            await conn.run_sync(Base.metadata.create_all)
-            return {"msg": "pg 建表成功"}
-        except Exception as e:
-            return {"msg": "pg 建表失败", "data": str(e)}
+async def create_user_tables():
+    return await create_pg_tables(
+        tables=[KHUSERModel.__table__, KHROLEModel.__table__, KHUSERROLEModel.__table__]
+    )
 
 
 # -------------------------- 用户接口 --------------------------

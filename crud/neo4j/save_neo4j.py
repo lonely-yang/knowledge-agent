@@ -1,27 +1,12 @@
 from fastapi import HTTPException
 from neo4j import AsyncDriver
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import URL, Column, Integer, JSON, String, select
+from sqlalchemy import Column, Integer, JSON, String, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from .config import settings
+from core.database import Base, SessionLocal
 from .entityAndrelationship import get_entity_relationship
-
-# -------------------------- 配置 --------------------------
-PGSQL_URL = URL.create(
-    drivername="postgresql+psycopg",
-    username=settings.POSTGRES_USER,
-    password=settings.POSTGRES_PASSWORD,
-    host=settings.POSTGRES_HOST,
-    port=settings.POSTGRES_PORT,
-    database=settings.POSTGRES_DB,
-)
-async_engine = create_async_engine(PGSQL_URL, pool_pre_ping=True)
-AsyncSessionLocal = async_sessionmaker(async_engine, expire_on_commit=False)
-Base = declarative_base()
-
 
 # -------------------------- SQLAlchemy ORM模型 --------------------------
 class GraphDocModel(Base):
@@ -51,22 +36,13 @@ class GraphDocOut(GraphDocCreate):
 
 
 # -------------------------- 建表 --------------------------
-async def create_pg_tables():
-    async with async_engine.begin() as conn:
-        try:
-            await conn.run_sync(Base.metadata.create_all)
-            return {"msg": "pg 建表成功"}
-        except Exception as e:
-            return {"msg": "pg 建表失败", "data": str(e)}
-
-
 async def _get_doc_or_none(session: AsyncSession, doc_id: int) -> GraphDocModel | None:
     stmt = select(GraphDocModel).where(GraphDocModel.doc_id == doc_id)
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
 async def graph_doc_exists(doc_id: int) -> bool:
-    async with AsyncSessionLocal() as session:
+    async with SessionLocal() as session:
         return await _get_doc_or_none(session, doc_id) is not None
 
 
@@ -76,7 +52,7 @@ async def create_graph_doc(doc_id: int, neo_driver: AsyncDriver | None = None) -
         raise HTTPException(status_code=409, detail=f"doc_id {doc_id} already exists")
     item = await get_entity_relationship(doc_id)
 
-    async with AsyncSessionLocal() as session:
+    async with SessionLocal() as session:
         db_record = GraphDocModel(
             doc_id=doc_id,
             entities=item.entities,
@@ -96,7 +72,7 @@ async def create_graph_doc(doc_id: int, neo_driver: AsyncDriver | None = None) -
             await neo_driver.execute_query(item.cypher)
         except Exception as e:
             # 图写入失败则回删元数据，保证PG与Neo4j两边状态一致
-            async with AsyncSessionLocal() as session:
+            async with SessionLocal() as session:
                 stale = await _get_doc_or_none(session, doc_id)
                 if stale:
                     await session.delete(stale)
@@ -107,7 +83,7 @@ async def create_graph_doc(doc_id: int, neo_driver: AsyncDriver | None = None) -
 
 
 async def get_graph_doc(doc_id: int) -> GraphDocModel:
-    async with AsyncSessionLocal() as session:
+    async with SessionLocal() as session:
         doc = await _get_doc_or_none(session, doc_id)
         if not doc:
             raise HTTPException(status_code=404, detail=f"doc_id {doc_id} not found")
@@ -115,7 +91,7 @@ async def get_graph_doc(doc_id: int) -> GraphDocModel:
 
 
 async def delete_graph_doc(doc_id: int):
-    async with AsyncSessionLocal() as session:
+    async with SessionLocal() as session:
         doc = await _get_doc_or_none(session, doc_id)
         if not doc:
             raise HTTPException(status_code=404, detail=f"doc_id {doc_id} not found")
