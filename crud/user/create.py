@@ -11,7 +11,7 @@ from schemas.user import (
     RoleRespDTO, UpdateUserDTO, UserRespDTO,
 )
 from utils.auth import create_access_token, create_refresh_token, decode_token
-from utils.pwd import get_password_hash, verify_password
+from utils.hashing import get_password_hash, verify_password
 
 user_router = APIRouter(prefix='/user', tags=['用户'])
 role_router = APIRouter(prefix='/role', tags=['角色'])

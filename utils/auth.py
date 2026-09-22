@@ -2,7 +2,7 @@ import datetime
 
 import jwt
 
-from crud.user.config import settings
+from core.config import settings
 
 ALGORITHM = settings.JWT_ALGORITHM
 SECRET_KEY = settings.JWT_SECRET_KEY

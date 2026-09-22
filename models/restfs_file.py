@@ -5,7 +5,7 @@ from fastapi.responses import StreamingResponse
 from urllib.parse import quote
 from crud.RustFS import settings
 from datetime import datetime
-from utils import pdf_parse, xlsx_parse,docx_parse,pptx_parse
+from utils.parsers import pdf_parse, xlsx_parse, docx_parse, pptx_parse
 from crud.postgre import get_db,create_kh_doc,pg_file_save
 restFS_router = APIRouter(prefix="/restFS", tags=["RestFS 文件存储"])
 
