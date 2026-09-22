@@ -3,7 +3,7 @@
 """
 from fastapi import HTTPException
 from models import KHDocument
-from .config import settings
+from core.config import settings
 from schemas.graph import Neo4jSchema
 from langchain_openai import ChatOpenAI
 model = ChatOpenAI(

@@ -1,11 +1,11 @@
 import asyncio
 import sys
 from contextlib import asynccontextmanager
-from crud.RustFS import init_rustfs_bucket
+from clients.rustfs import init_rustfs_bucket
 from crud.mongodb import init_mongodb
-from crud.rabbitmq.rabbitms import init_mq,close_mq
-from crud.es.create import init_es,close_es
-from crud.neo4j.create import init_neo4j_driver, close_neo4j_driver
+from clients.rabbitmq.mq import init_mq,close_mq
+from clients.es_client import init_es,close_es
+from clients.neo4j_client import init_neo4j_driver, close_neo4j_driver
 
 if sys.platform == 'win32':
     # psycopg 异步模式不支持 Windows 默认的 ProactorEventLoop

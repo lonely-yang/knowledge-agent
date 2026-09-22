@@ -12,7 +12,7 @@ from crud.postgre import update_kh_doc
 from schemas.document import KhDocumentRespDTOUpdate
 from fastapi import APIRouter
 from core.database import SessionLocal
-from crud.rabbitmq.producer import publish_index,publish_rag,publish_kg
+from clients.rabbitmq.producer import publish_index,publish_rag,publish_kg
 publish_router = APIRouter(prefix='/knowledge_doc',tags=['发布文档'])
 
 @publish_router.post('/publish')

@@ -2,7 +2,7 @@ import openpyxl
 import io
 import asyncio
 from datetime import datetime
-from crud.RustFS import settings
+from core.config import settings
 
 async def extract_xlsx_text_and_images(xlsx_bytes, name_part, s3):
     # 内存加载xlsx

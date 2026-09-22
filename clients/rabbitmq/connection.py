@@ -1,6 +1,6 @@
 import aio_pika
 from aio_pika.abc import AbstractChannel, AbstractConnection
-from .config import settings
+from core.config import settings
 
 DLX_NAME = "aiagent.dlx"
 

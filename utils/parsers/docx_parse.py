@@ -2,7 +2,7 @@ import io
 import asyncio
 from datetime import datetime
 from docx import Document
-from crud.RustFS import settings
+from core.config import settings
 
 # 命名空间常量
 NS_A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"

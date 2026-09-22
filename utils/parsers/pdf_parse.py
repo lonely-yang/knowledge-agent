@@ -1,5 +1,5 @@
 import pymupdf
-from crud.RustFS import settings
+from core.config import settings
 from datetime import datetime
 async def extract_pdf_text_and_images(pdf_bytes,name_part,s3):
     # 在内存打开pdf，不用本地文件

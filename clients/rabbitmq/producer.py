@@ -2,7 +2,7 @@ import json
 import aio_pika
 from aio_pika import Message
 from .connection import rmq_manager
-from .config import settings
+from core.config import settings
 
 async def publish_index(meta: dict, content: str):
     """INDEX队列：整篇元数据+正文，使用channel_index"""

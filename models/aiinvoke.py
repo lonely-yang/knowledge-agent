@@ -4,8 +4,8 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 
 from core.config import settings
-from crud.milvus.search import search_milvus_data
-from crud.es.create import search_data, get_es
+from clients.milvus_client import search_milvus_data
+from clients.es_client import search_data, get_es
 
 ai_router = APIRouter(prefix='/ai', tags=['LLM'])
 

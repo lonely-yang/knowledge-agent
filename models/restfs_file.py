@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends,UploadFile, File, HTTPException
-from crud.RustFS import get_s3_client
+from clients.rustfs import get_s3_client
 from botocore.exceptions import ClientError
 from fastapi.responses import StreamingResponse
 from urllib.parse import quote
-from crud.RustFS import settings
+from core.config import settings
 from datetime import datetime
 from utils.parsers import pdf_parse, xlsx_parse, docx_parse, pptx_parse
 from crud.postgre import get_db,create_kh_doc,pg_file_save

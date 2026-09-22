@@ -3,7 +3,7 @@ import asyncio
 from datetime import datetime
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
-from crud.RustFS import settings
+from core.config import settings
 
 async def extract_pptx_text_and_images(pptx_bytes, name_part, s3):
     bio = io.BytesIO(pptx_bytes)

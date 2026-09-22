@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import get_db, create_pg_tables
+from core.database import get_db, create_pg_tables as db_create_pg_tables
 from models import UserModel, RoleModel, UserRoleModel
 from schemas.user import (
     AddRoleDTO, BindRoleDTO, LoginDTO, RefreshTokenDTO, RegisterDTO,
@@ -32,8 +32,8 @@ async def get_current_user(authorization: Optional[str] = Header(None), db: Asyn
 
 # -------------------------- 建表 --------------------------
 @user_router.get('/create_table')
-async def create_user_tables():
-    return await create_pg_tables(
+async def create_pg_tables():
+    return await db_create_pg_tables(
         tables=[UserModel.__table__, RoleModel.__table__, UserRoleModel.__table__]
     )
 

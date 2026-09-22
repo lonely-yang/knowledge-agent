@@ -1,7 +1,7 @@
 
-from pymilvus import CollectionSchema, FieldSchema, DataType,AsyncMilvusClient
-from .search import search_milvus_data
-from .config import milvus_client,settings
+from pymilvus import CollectionSchema, FieldSchema, DataType
+from clients.milvus_client import milvus_client, search_milvus_data
+from core.config import settings
 from fastapi import APIRouter
 milvus_router = APIRouter(prefix='/Milvus',tags=['向量数据库'])
 
