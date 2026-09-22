@@ -2,11 +2,12 @@ import json
 import asyncio
 from aio_pika.abc import AbstractIncomingMessage
 from core.config import settings
-from clients.rabbitmq.connection import rmq_manager
 from clients.es_client import add_data
+from clients.neo4j_client import driver
+from clients.rabbitmq.connection import rmq_manager
 from schemas.search import KnowledgeDoc
-from crud.mongodb import get_mongo_doc_api
-from crud.neo4j.create import insert_neo4j_table
+from services.content_service import get_mongo_doc
+from services.graph_service import create_graph_doc
 from utils.split_file import split_doc
 # ---------------------- Handler ----------------------
 async def handle_index_msg(message: AbstractIncomingMessage):
@@ -28,7 +29,7 @@ async def handle_rag_msg(message: AbstractIncomingMessage):
         doc_id = payload["doc_id"]
         meta = payload["meta"]
         # TODO: RAG切片、向量化
-        doc = await get_mongo_doc_api(doc_id)
+        doc = await get_mongo_doc(doc_id)
         await split_doc(doc_id,meta,doc)
 
 
@@ -38,7 +39,7 @@ async def handle_kg_msg(message: AbstractIncomingMessage):
         doc_id = payload["doc_id"]
         content = payload["content"]
         # TODO: KG抽取
-        doc = await insert_neo4j_table(doc_id)
+        doc = await create_graph_doc(doc_id, neo_driver=driver)
 
 
 

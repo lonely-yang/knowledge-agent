@@ -2,7 +2,7 @@ import asyncio
 import sys
 from contextlib import asynccontextmanager
 from clients.rustfs import init_rustfs_bucket
-from crud.mongodb import init_mongodb
+from services.content_service import init_mongodb
 from clients.rabbitmq.mq import init_mq,close_mq
 from clients.es_client import init_es,close_es
 from clients.neo4j_client import init_neo4j_driver, close_neo4j_driver
@@ -13,15 +13,16 @@ if sys.platform == 'win32':
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from models.restfs_file import restFS_router
-from models.publish_doc import publish_router
-from crud.postgre import pg_router
-from crud.mongodb import mongo_router
-from crud.es.create import es_router
-from crud.milvus.create import milvus_router
-from crud.neo4j.create import neo4j_router
-from models.aiinvoke import ai_router
-from crud.user.create import user_router, role_router
+from api.file import file_router
+from api.publish import publish_router
+from api.document import pg_router
+from api.mongo import mongo_router
+from api.es import es_router
+from api.milvus import milvus_router
+from api.neo4j import neo4j_router
+from api.ai import ai_router
+from api.user import user_router
+from api.role import role_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -54,6 +55,5 @@ app.include_router(milvus_router)
 app.include_router(es_router)
 app.include_router(pg_router)
 app.include_router(mongo_router)
-app.include_router(restFS_router)
+app.include_router(file_router)
 app.include_router(publish_router)
-
