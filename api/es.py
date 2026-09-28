@@ -10,6 +10,8 @@ from clients.es_client import (
     search_data as es_search_data,
     search_hightlight_data as es_search_hightlight_data,
 )
+from core.security import get_current_user
+from models import UserModel
 from schemas.search import KnowledgeDoc
 
 es_router = APIRouter(prefix='/es',tags=['ES 全文检索'])
@@ -58,20 +60,31 @@ async def es_check(doc_id:int,es:AsyncElasticsearch = Depends(init_es)):
     res = await es_check_data(doc_id,es)
     return res
 
-# 查询数据
+# 查询数据(仅当前用户可见文档)
 @es_router.get('/query')
-async def search_data(query:str,es:AsyncElasticsearch = Depends(init_es)):
-    return await es_search_data(query, es)
+async def search_data(
+    query: str,
+    es: AsyncElasticsearch = Depends(init_es),
+    current_user: UserModel = Depends(get_current_user),
+):
+    return await es_search_data(query, es, current_user.id)
 
 @es_router.get('/hightlight_query')
-async def search_hightlight_data(query:str,es:AsyncElasticsearch = Depends(init_es)):
-    return await es_search_hightlight_data(query, es)
+async def search_hightlight_data(
+    query: str,
+    es: AsyncElasticsearch = Depends(init_es),
+    current_user: UserModel = Depends(get_current_user),
+):
+    return await es_search_hightlight_data(query, es, current_user.id)
 
 
-# 查询全部数据
+# 查询全部数据(仅当前用户可见文档)
 @es_router.get('/query_all')
-async def search_all_data(es:AsyncElasticsearch = Depends(init_es)):
-    return await es_search_all_data(es)
+async def search_all_data(
+    es: AsyncElasticsearch = Depends(init_es),
+    current_user: UserModel = Depends(get_current_user),
+):
+    return await es_search_all_data(es, current_user.id)
 
 
 # 删除全部数据（保留索引结构）

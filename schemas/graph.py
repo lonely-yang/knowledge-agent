@@ -21,3 +21,12 @@ class GraphDocCreate(BaseModel):
 class GraphDocOut(GraphDocCreate):
     id: int
     model_config = ConfigDict(from_attributes=True)
+
+
+class GraphOverviewDTO(BaseModel):
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    stats: dict = {}
+    top_entities: list[dict] = []
+    recent_nodes: list[dict] = []
+    entity_types: list[str] = []

@@ -25,6 +25,8 @@ class RoleModel(Base):
     role_name = Column(String(50), nullable=False)
     role_code = Column(String(50), nullable=False, unique=True)
     description = Column(String(255), nullable=False)
+    create_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+    update_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
 
 
 # -------------------------- 用户角色关联表 --------------------------

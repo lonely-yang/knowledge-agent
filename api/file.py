@@ -5,9 +5,14 @@ from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
 
+from sqlalchemy import select
+
 from clients.rustfs import get_s3_client
 from core.config import settings
-from core.database import SessionLocal
+from core.database import SessionLocal, get_db
+from core.security import can_download_doc, get_current_user
+from models import KhDocument, TeamMemberModel, UserModel
+from sqlalchemy.ext.asyncio import AsyncSession
 from schemas.content import DocContent
 from services.content_service import add_mongo_doc
 from services.document_service import create_kh_doc
@@ -15,16 +20,25 @@ from utils.parsers import pdf_parse, xlsx_parse, docx_parse, pptx_parse
 
 file_router = APIRouter(prefix="/restfs", tags=["RestFS 文件存储"])
 
-
 # 文件处理 -- 字段存储
-async def pg_file_save(file_data):
+async def pg_file_save(file_data, author_id: int):
 
-    cfg = {
-        'title':file_data.get('key'),
-        'status':0,
-        'content':file_data.get('data').get('text')
-    }
     async with SessionLocal() as session:
+        # 自动归属上传者所在部门(一人一部门),保证同部门审核员可审
+        team_row = (
+            await session.execute(
+                select(TeamMemberModel.team_id).where(TeamMemberModel.user_id == str(author_id))
+            )
+        ).scalar_one_or_none()
+        team_id = int(team_row) if team_row and team_row.isdigit() else None
+
+        cfg = {
+            'title':file_data.get('key'),
+            'status':0,
+            'author_id': author_id,
+            'team_id': team_id,
+            'content':file_data.get('data').get('text')
+        }
         doc = await create_kh_doc(session, cfg)
         # 同步 MongoDB（原 create_kh_doc 内联逻辑，编排上移 api 层）
         if cfg['content']:
@@ -35,13 +49,15 @@ async def pg_file_save(file_data):
                 content_summary=doc.summary
             )
             await add_mongo_doc(mongo_cfg)
+    return doc
 
 
 # ========== 接口1：小文件直接上传（服务端中转） ==========
 @file_router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
-    s3 = Depends(get_s3_client)
+    s3 = Depends(get_s3_client),
+    current_user: UserModel = Depends(get_current_user),
 ):
     try:
         file_bytes = await file.read()
@@ -84,13 +100,9 @@ async def upload_file(
             file_data = await pptx_parse.extract_pptx_text_and_images(file_bytes, name_part, s3)
 
 
-        await pg_file_save({"key": key,'data':file_data})
+        doc = await pg_file_save({"key": key,'data':file_data}, author_id=current_user.id)
 
-
-
-
-
-        return {"msg": "上传成功", "key": key, "size": len(file_bytes),'data':file_data}
+        return {"msg": "上传成功", "key": key, "size": len(file_bytes),'data':file_data, 'doc_id': doc.id}
     except ClientError as e:
         raise HTTPException(status_code=500, detail=f"RustFS存储异常: {str(e)}")
 
@@ -98,8 +110,14 @@ async def upload_file(
 @file_router.get("/download/{filename}")
 async def download_file(
     filename: str,
-    s3 = Depends(get_s3_client)
+    db: AsyncSession = Depends(get_db),
+    s3 = Depends(get_s3_client),
+    current_user: UserModel = Depends(get_current_user),
 ):
+    # 文件名即 restfs key,反查文档并按「公开/同部门/作者」校验下载权限
+    doc = (await db.execute(select(KhDocument).where(KhDocument.title == filename))).scalars().first()
+    if not await can_download_doc(db, current_user, doc):
+        raise HTTPException(status_code=403, detail="无权下载该文件")
     try:
         resp = await s3.get_object(Bucket=settings.RUSTFS_BUCKET, Key=filename)
     except ClientError as e:

@@ -23,6 +23,11 @@ from api.neo4j import neo4j_router
 from api.ai import ai_router
 from api.user import user_router
 from api.role import role_router
+from api.team import team_router
+from api.chat import chat_router
+from api.permission import permission_router
+from api.review import review_router
+from api.voice import voice_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -49,6 +54,8 @@ app.add_middleware(
 )
 app.include_router(user_router)
 app.include_router(role_router)
+app.include_router(team_router)
+app.include_router(chat_router)
 app.include_router(ai_router)
 app.include_router(neo4j_router)
 app.include_router(milvus_router)
@@ -57,3 +64,9 @@ app.include_router(pg_router)
 app.include_router(mongo_router)
 app.include_router(file_router)
 app.include_router(publish_router)
+app.include_router(permission_router)
+app.include_router(review_router)
+app.include_router(voice_router)
+# vite 代理的 rewrite 对 WebSocket upgrade 不生效，前端 WS 会以 /api/voice/* 原样到达；
+# 挂一份 /api 前缀别名让两种路径都可用
+app.include_router(voice_router, prefix="/api")

@@ -128,20 +128,15 @@ dist-ssr
 *.sln
 *.sw?
 
-# 环境变量文件
+# 环境变量文件（含各类备份 .env.bak/.env.old 等）
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.env.*.local
-
+.env.*
+!.env.example
 
 # Docker volumes
 volumes/
 
 # 重构验证产物与配置备份
-.env.bak
 before_openapi.json
 after_openapi.json
 

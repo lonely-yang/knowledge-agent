@@ -12,20 +12,25 @@ from core.database import SessionLocal
 from fastapi import APIRouter
 from schemas.document import KhDocumentRespDTOUpdate
 from services.content_service import get_mongo_doc
-from services.document_service import update_kh_doc
+from services.document_service import mark_parsing, update_kh_doc
 publish_router = APIRouter(prefix='/knowledge_doc',tags=['发布文档'])
 
 @publish_router.post('/publish')
 async def publish_api(doc_id:int):
     #改变pg 中文档的状态
-    dto = KhDocumentRespDTOUpdate(status=1)
+    dto = KhDocumentRespDTOUpdate(status=1, publish_time=datetime.now())
     async with SessionLocal() as session:
         pg_data = await update_kh_doc(session,dto,doc_id)
+        # 标记 3 个 MQ 流程为「解析中」,消费端各自回写结果
+        await mark_parsing(session, doc_id)
         mondb_data = await get_mongo_doc(doc_id)
         # 审核 发布成功
         # 存入 es 模块
         meta = {c.name: getattr(pg_data, c.name) for c in pg_data.__table__.columns}
         meta = {k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in meta.items()}
+        # ES 索引 is_public 为 boolean 类型,PG 为 0/1 整型,转换避免写入报错
+        if 'is_public' in meta and meta['is_public'] is not None:
+            meta['is_public'] = bool(meta['is_public'])
         await mq_publish_es(doc_id,meta, mondb_data.content)
 
         return {

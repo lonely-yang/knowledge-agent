@@ -59,5 +59,26 @@ class Settings(BaseSettings):
     JWT_EXPIRE_MINUTES: int = 1440
     JWT_REFRESH_EXPIRE_MINUTES: int = 10080
 
+    # web search
+    BOCHAAI_KEY:str = "sk - 170143422d4a482d8cfc8463eca7f372"
+    WEB_SEARCH_MIN_SCORE: float = 0.3   # 知识库最高相关分低于此阈值才联网兜底
+    WEB_SEARCH_COUNT: int = 5           # 联网返回条数
+
+    # 腾讯云语音(ASR/TTS)，密钥需手动填入 .env；留空时语音接口返回明确错误
+    TENCENT_SECRET_ID: str = ""
+    TENCENT_SECRET_KEY: str = ""
+    TENCENT_APP_ID: str = ""
+    TTS_WS_URL: str = "wss://tts.cloud.tencent.com/stream_ws"
+    TTS_VOICE_TYPE: int = 502002
+    TTS_SAMPLE_RATE: int = 24000
+    TTS_CODEC: str = "mp3"
+    ASR_ENGINE_MODEL_TYPE: str = "16k_zh_en"
+    ASR_VOICE_FORMAT: int = 1  # 1=pcm s16le 16k 单声道，前端按此格式上行
+    ASR_NEED_VAD: int = 1
+
+    @property
+    def speech_ready(self) -> bool:
+        return bool(self.TENCENT_SECRET_ID and self.TENCENT_SECRET_KEY and self.TENCENT_APP_ID)
+
 
 settings = Settings()

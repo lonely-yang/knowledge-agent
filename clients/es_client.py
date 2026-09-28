@@ -44,17 +44,47 @@ async def check_data(doc_id,es):
     res = await es.get(index=settings.INDEX_NAME,id=doc_id)
     return res
 
+async def delete_data(doc_id:int,es=None):
+    """删除索引中的文档,不存在时忽略"""
+    if es is None:
+        es = await get_es()
+    try:
+        await es.delete(index=settings.INDEX_NAME, id=doc_id, refresh=True)
+    except Exception:
+        # 文档未入索引(草稿/未发布)或已删除,忽略
+        pass
+
+def _visible_filter(user_id: int | None):
+    """可见性过滤:公开或本人(None=不过滤,兼容非登录场景的调试调用)"""
+    if user_id is None:
+        return []
+    return [{
+        'bool': {
+            'should': [
+                {'term': {'is_public': True}},
+                {'term': {'author_id': user_id}},
+            ],
+            'minimum_should_match': 1,
+        }
+    }]
+
+
 # 查询数据
-async def search_data(query:str,es:AsyncElasticsearch):
+async def search_data(query:str,es:AsyncElasticsearch,user_id:int|None=None):
     res = await es.search(
         index=settings.INDEX_NAME,
         query={
-           "multi_match": {
-                "query": query,
-                "analyzer": "ik_smart",
-                "fields": ["title^3","summary^2", "content"],
-                "type": "best_fields"
-            }
+           "bool": {
+               "must": [{
+                   "multi_match": {
+                        "query": query,
+                        "analyzer": "ik_smart",
+                        "fields": ["title^3","summary^2", "content"],
+                        "type": "best_fields"
+                   }
+               }],
+               "filter": _visible_filter(user_id),
+           }
         }
     )
     hits = res['hits']['hits']
@@ -71,20 +101,25 @@ async def search_data(query:str,es:AsyncElasticsearch):
         'data':new_hits
     }
 
-async def search_hightlight_data(query:str,es:AsyncElasticsearch):
+async def search_hightlight_data(query:str,es:AsyncElasticsearch,user_id:int|None=None):
     res = await es.search(
         index=settings.INDEX_NAME,
         query={
-            "multi_match": {
-                "query": query,
-                "analyzer": "ik_smart",
-                "fields": ["title^3", "summary^2","content"], # title^3 标题权重3倍高于content
-                "type": "best_fields"
+            "bool": {
+                "must": [{
+                    "multi_match": {
+                        "query": query,
+                        "analyzer": "ik_smart",
+                        "fields": ["title^3", "summary^2","content"], # title^3 标题权重3倍高于content
+                        "type": "best_fields"
+                    }
+                }],
+                "filter": _visible_filter(user_id),
             }
         },
         # ========= 新增高亮配置 =========
         highlight={
-            "pre_tags": ['<span style="background-color: #ffe600;">'], # 黄色底色，和截图一致
+            "pre_tags": ['<span style="background-color: #0010e6;color:#fff;">'],
             "post_tags": ['</span>'],
             "fields": {
                 "content": {
@@ -97,6 +132,14 @@ async def search_hightlight_data(query:str,es:AsyncElasticsearch):
     )
     hits = res['hits']['hits']
 
+    def _close_span(text: str) -> str:
+        # ES 片段在 fragment_size 边界截断时可能不闭合高亮标签,补齐结束标签
+        opens = text.count('<span')
+        closes = text.count('</span>')
+        if opens > closes:
+            text += '</span>' * (opens - closes)
+        return text
+
     new_hits = []
     for h in hits:
         _id = h.get('_id')
@@ -104,7 +147,7 @@ async def search_hightlight_data(query:str,es:AsyncElasticsearch):
         highlight_content = h.get("highlight", {}).get("content")
         title = h.get('_source').get('title')
         if highlight_content:
-            content = highlight_content[0] # 取出第一段高亮摘要
+            content = _close_span(highlight_content[0]) # 取出第一段高亮摘要
         else:
             content = h.get('_source').get('content')
         new_hits.append({
@@ -116,10 +159,15 @@ async def search_hightlight_data(query:str,es:AsyncElasticsearch):
 
 
 # 查询全部数据
-async def search_all_data(es:AsyncElasticsearch):
+async def search_all_data(es:AsyncElasticsearch,user_id:int|None=None):
     res = await es.search(
         index=settings.INDEX_NAME,
-        query={'match_all': {}},
+        query={
+            'bool': {
+                'must': [{'match_all': {}}],
+                'filter': _visible_filter(user_id),
+            }
+        },
         size=10000  # ES 默认只返回10条，需要显式调大
     )
     hits = res['hits']['hits']

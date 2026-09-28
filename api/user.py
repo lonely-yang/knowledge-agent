@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import delete, select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db, create_pg_tables as db_create_pg_tables
 from core.security import get_current_user
-from models import UserModel, RoleModel, UserRoleModel
-from schemas.user import LoginDTO, RefreshTokenDTO, RegisterDTO, UpdateUserDTO, UserRespDTO
+from models import KhDocument, UserModel, RoleModel, TeamMemberModel, TeamModel, UserRoleModel
+from schemas.user import AssignRolesDTO, CreateUserDTO, LoginDTO, RefreshTokenDTO, RegisterDTO, UpdateUserDTO, UserPageRespDTO, UserRespDTO, UserWithRolesRespDTO
 from utils.auth import create_access_token, create_refresh_token, decode_token
 from utils.hashing import get_password_hash, verify_password
 
@@ -18,13 +18,130 @@ async def create_pg_tables():
     return await db_create_pg_tables(
         tables=[UserModel.__table__, RoleModel.__table__, UserRoleModel.__table__]
     )
-
+    
 
 # -------------------------- 用户接口 --------------------------
 async def get_user_by_username(db: AsyncSession, username: str):
     stmt = select(UserModel).where(UserModel.username == username)
     res = await db.execute(stmt)
     return res.scalar_one_or_none()
+
+
+@user_router.get('/query_users', response_model=UserPageRespDTO)
+async def query_users_api(
+    username: str = Query('', description='用户名，模糊匹配'),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
+):
+    """按用户名分页查询用户"""
+    stmt = select(UserModel)
+    if username:
+        stmt = stmt.where(UserModel.username.ilike(f'%{username}%'))
+    total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar() or 0
+    rows = (
+        await db.execute(stmt.order_by(UserModel.id).offset((page - 1) * page_size).limit(page_size))
+    ).scalars().all()
+    role_codes_map: dict[int, list[str]] = {}
+    team_name_map: dict[int, str] = {}
+    if rows:
+        rels = (
+            await db.execute(select(UserRoleModel).where(UserRoleModel.user_id.in_([str(r.id) for r in rows])))
+        ).scalars().all()
+        if rels:
+            role_ids = {int(rel.role_id) for rel in rels}
+            code_by_id = {
+                role.id: role.role_code
+                for role in (await db.execute(select(RoleModel).where(RoleModel.id.in_(role_ids)))).scalars().all()
+            }
+            for rel in rels:
+                code = code_by_id.get(int(rel.role_id))
+                if code:
+                    role_codes_map.setdefault(int(rel.user_id), []).append(code)
+        team_rels = (
+            await db.execute(select(TeamMemberModel).where(TeamMemberModel.user_id.in_([str(r.id) for r in rows])))
+        ).scalars().all()
+        if team_rels:
+            team_ids = {int(x.team_id) for x in team_rels if x.team_id.isdigit()}
+            name_by_id = {
+                t.id: t.team_name
+                for t in (await db.execute(select(TeamModel).where(TeamModel.id.in_(team_ids)))).scalars().all()
+            }
+            for x in team_rels:
+                if x.team_id.isdigit():
+                    team_name_map[int(x.user_id)] = name_by_id.get(int(x.team_id))
+    return {
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+        'list': [
+            UserWithRolesRespDTO(
+                id=r.id, username=r.username, email=r.email,
+                create_at=r.create_at, update_at=r.update_at,
+                role_codes=role_codes_map.get(r.id, []),
+                team_name=team_name_map.get(r.id),
+            )
+            for r in rows
+        ],
+    }
+
+
+@user_router.get('/stats')
+async def user_stats_api(db: AsyncSession = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
+    """用户统计(文档数为本人上传数,浏览/点赞/评论暂无数据来源,返回0)"""
+    doc_count = (
+        await db.execute(
+            select(func.count()).select_from(KhDocument).where(KhDocument.author_id == current_user.id)
+        )
+    ).scalar() or 0
+    return {
+        'document_count': doc_count,
+        'view_count': 0,
+        'like_count': 0,
+        'comment_count': 0,
+    }
+
+
+@user_router.get('/roles')
+async def user_roles_api(user_id: int, db: AsyncSession = Depends(get_db), current_user: UserModel = Depends(get_current_user)):
+    """查询用户已绑定的角色编码"""
+    if not await db.get(UserModel, user_id):
+        raise HTTPException(status_code=404, detail="用户不存在")
+    rows = (
+        await db.execute(select(UserRoleModel.role_id).where(UserRoleModel.user_id == str(user_id)))
+    ).scalars().all()
+    role_ids = {int(x) for x in rows}
+    codes = []
+    if role_ids:
+        codes = (
+            await db.execute(select(RoleModel.role_code).where(RoleModel.id.in_(role_ids)))
+        ).scalars().all()
+    return {'user_id': user_id, 'role_codes': list(codes)}
+
+
+@user_router.post('/assign_roles')
+async def assign_roles_api(
+    dto: AssignRolesDTO,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
+):
+    """给用户分配角色(覆盖式:清空该用户现有角色后按提交的角色编码重新绑定)"""
+    if not await db.get(UserModel, dto.user_id):
+        raise HTTPException(status_code=404, detail="用户不存在")
+    roles = []
+    if dto.role_codes:
+        roles = (
+            await db.execute(select(RoleModel).where(RoleModel.role_code.in_(dto.role_codes)))
+        ).scalars().all()
+        missing = set(dto.role_codes) - {role.role_code for role in roles}
+        if missing:
+            raise HTTPException(status_code=400, detail=f"角色编码不存在: {', '.join(sorted(missing))}")
+    await db.execute(delete(UserRoleModel).where(UserRoleModel.user_id == str(dto.user_id)))
+    for role in roles:
+        db.add(UserRoleModel(user_id=str(dto.user_id), role_id=str(role.id)))
+    await db.commit()
+    return {"msg": "分配成功"}
 
 
 @user_router.post('/register', response_model=UserRespDTO)
@@ -43,6 +160,42 @@ async def register_api(dto: RegisterDTO, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail="邮箱已存在")
     user = UserModel(username=username, password=get_password_hash(dto.password), email=email)
     db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@user_router.post('/create_user', response_model=UserRespDTO)
+async def create_user_api(
+    dto: CreateUserDTO,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
+):
+    """管理员创建用户并分配角色"""
+    username = dto.username.strip()
+    email = dto.email.strip()
+    if not username or not email:
+        raise HTTPException(status_code=400, detail="用户名和邮箱不能为空")
+    if len(dto.password) < 6:
+        raise HTTPException(status_code=400, detail="密码长度至少6位")
+    if await get_user_by_username(db, username):
+        raise HTTPException(status_code=400, detail="用户名已存在")
+    stmt = select(UserModel).where(UserModel.email == email)
+    if (await db.execute(stmt)).scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="邮箱已存在")
+    roles = []
+    if dto.role_codes:
+        roles = (
+            await db.execute(select(RoleModel).where(RoleModel.role_code.in_(dto.role_codes)))
+        ).scalars().all()
+        missing = set(dto.role_codes) - {role.role_code for role in roles}
+        if missing:
+            raise HTTPException(status_code=400, detail=f"角色编码不存在: {', '.join(sorted(missing))}")
+    user = UserModel(username=username, password=get_password_hash(dto.password), email=email)
+    db.add(user)
+    await db.flush()
+    for role in roles:
+        db.add(UserRoleModel(user_id=str(user.id), role_id=str(role.id)))
     await db.commit()
     await db.refresh(user)
     return user

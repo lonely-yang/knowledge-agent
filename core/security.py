@@ -1,11 +1,15 @@
 from typing import Optional
 
 from fastapi import Depends, Header, HTTPException
+from sqlalchemy import String, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
-from models import UserModel
+from models import KhDocument, RoleModel, TeamMemberModel, UserModel, UserRoleModel
 from utils.auth import decode_token
+
+ADMIN_ROLE_CODE = 'ROLE_ADMIN'
+REVIEWER_ROLE_CODE = 'ROLE_SH'
 
 
 async def get_current_user(authorization: Optional[str] = Header(None), db: AsyncSession = Depends(get_db)) -> UserModel:
@@ -18,3 +22,57 @@ async def get_current_user(authorization: Optional[str] = Header(None), db: Asyn
     if not user:
         raise HTTPException(status_code=401, detail="用户不存在")
     return user
+
+
+async def is_admin_user(db: AsyncSession, user: UserModel) -> bool:
+    """判断用户是否具有 ROLE_ADMIN 角色"""
+    return ADMIN_ROLE_CODE in await get_user_role_codes(db, user)
+
+
+async def get_user_role_codes(db: AsyncSession, user: UserModel) -> set[str]:
+    """查询用户的全部角色编码"""
+    stmt = (
+        select(RoleModel.role_code)
+        .join(UserRoleModel, UserRoleModel.role_id == cast(RoleModel.id, String))
+        .where(UserRoleModel.user_id == str(user.id))
+    )
+    return set((await db.execute(stmt)).scalars().all())
+
+
+async def can_review_doc(db: AsyncSession, user: UserModel, doc: KhDocument | None) -> bool:
+    """审核权限:ROLE_ADMIN 可审全部;ROLE_SH 仅可审与自己同部门的文档"""
+    roles = await get_user_role_codes(db, user)
+    if ADMIN_ROLE_CODE in roles:
+        return True
+    if REVIEWER_ROLE_CODE not in roles:
+        return False
+    if not doc or not doc.team_id:
+        return False
+    my_team_ids = set(
+        (await db.execute(select(TeamMemberModel.team_id).where(TeamMemberModel.user_id == str(user.id)))).scalars().all()
+    )
+    return str(doc.team_id) in my_team_ids
+
+
+async def can_download_doc(db: AsyncSession, user: UserModel, doc: KhDocument | None) -> bool:
+    """上传文件下载权限:公开文档 / 作者本人 / 与文档同部门的用户"""
+    if not doc:
+        return False
+    if doc.is_public == 1 or doc.author_id == user.id:
+        return True
+    if doc.team_id:
+        my_team_ids = set(
+            (await db.execute(select(TeamMemberModel.team_id).where(TeamMemberModel.user_id == str(user.id)))).scalars().all()
+        )
+        return str(doc.team_id) in my_team_ids
+    return False
+
+
+async def require_admin(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
+) -> UserModel:
+    """系统管理员角色校验:kh_user_role 关联的 kh_role 中必须包含 ROLE_ADMIN"""
+    if not await is_admin_user(db, current_user):
+        raise HTTPException(status_code=403, detail="仅系统管理员可执行此操作")
+    return current_user

@@ -53,7 +53,14 @@ async def milvus_insert(doc_id,meta,chunks):
 
 
 # 从向量数据库中进行查询相似度最接近的数据
-async def search_milvus_data(query:str):
+async def search_milvus_data(query: str, doc_ids: list[int] | None = None):
+    """向量召回;doc_ids 为可见文档ID列表(None=不过滤,空列表=直接返回空)"""
+    if doc_ids is not None and not doc_ids:
+        return {'msg': '向量查询成功', 'data': []}
+    filter_expr = None
+    if doc_ids:
+        # content_id 形如 "{doc_id}-{chunk_index}",按前缀匹配限定可见文档
+        filter_expr = ' or '.join(f'(content_id like "{d}-%")' for d in doc_ids)
     vector_query = await embedding_text(query)
     res = await milvus_client.search(
         collection_name=settings.COLLECTION_NAME,
@@ -64,7 +71,8 @@ async def search_milvus_data(query:str):
             "params": {"nprobe": 16}  # 搜索时考虑的聚类数量
         },
         limit=10,  # 返回 Top-10 最相似的结果
-        output_fields=["id",'title','content_id','content']  # 指定返回的标量字段
+        output_fields=["id",'title','content_id','content'],  # 指定返回的标量字段
+        filter=filter_expr,
     )
     return {
         'msg':'向量查询成功',
