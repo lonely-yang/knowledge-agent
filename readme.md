@@ -145,3 +145,6 @@ python scripts/test_chat.py / test_voice.py
 3. 网关层 HTTPS + CORS 收紧
 4. 预发完整跑一遍链路（publish → MQ → ES/Milvus/KG → /ai 问答）
 5. 备份方案（volumes 定时备份）+ 监控告警（DLQ 积压、容器健康）
+
+
+##  测试git，往readme文件夹里加了一些内容
