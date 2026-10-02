@@ -148,3 +148,6 @@ python scripts/test_chat.py / test_voice.py
 
 
 ##  测试git，往readme文件夹里加了一些内容
+
+
+##  测试git2，又往readme文件夹里加了一些内容
